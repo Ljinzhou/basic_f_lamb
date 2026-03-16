@@ -4,13 +4,23 @@
 #include "string.h"
 
 static PWMInstance *buzzer;
-// static uint8_t idx;
 static BuzzzerInstance *buzzer_list[BUZZER_DEVICE_CNT] = {0};
 
-/**
- * @brief 蜂鸣器初始化
- *
- */
+static Note_t startup_melody[STARTUP_MELODY_LENGTH] = {
+    {DoFreq, 150},
+    {ReFreq, 150},
+    {MiFreq, 150},
+    {FaFreq, 150},
+    {SoFreq, 150},
+    {LaFreq, 150},
+    {SiFreq, 300},
+};
+
+static uint8_t current_note_index = 0;
+static float note_start_time = 0;
+static uint8_t is_playing_melody = 0;
+static float melody_loudness = 0.3f;
+
 void BuzzerInit()
 {
     PWM_Init_Config_s buzzer_config = {
@@ -24,7 +34,7 @@ void BuzzerInit()
 
 BuzzzerInstance *BuzzerRegister(Buzzer_config_s *config)
 {
-    if (config->alarm_level > BUZZER_DEVICE_CNT) // 超过最大实例数,考虑增加或查看是否有内存泄漏
+    if (config->alarm_level > BUZZER_DEVICE_CNT)
         while (1)
             ;
     BuzzzerInstance *buzzer_temp = (BuzzzerInstance *)malloc(sizeof(BuzzzerInstance));
@@ -44,13 +54,61 @@ void AlarmSetStatus(BuzzzerInstance *buzzer, AlarmState_e state)
     buzzer->alarm_state = state;
 }
 
+void PlayStartupMelody()
+{
+    if (!is_playing_melody)
+    {
+        is_playing_melody = 1;
+        current_note_index = 0;
+        note_start_time = DWT_GetTimeline_ms();
+    }
+}
+
+uint8_t IsStartupMelodyPlaying()
+{
+    return is_playing_melody;
+}
+
+static void UpdateStartupMelody()
+{
+    if (!is_playing_melody)
+        return;
+
+    float current_time = DWT_GetTimeline_ms();
+    Note_t *current_note = &startup_melody[current_note_index];
+
+    if (current_time - note_start_time >= current_note->duration_ms)
+    {
+        current_note_index++;
+        note_start_time = current_time;
+
+        if (current_note_index >= STARTUP_MELODY_LENGTH)
+        {
+            is_playing_melody = 0;
+            current_note_index = 0;
+            PWMSetDutyRatio(buzzer, 0);
+            return;
+        }
+        current_note = &startup_melody[current_note_index];
+    }
+
+    PWMSetDutyRatio(buzzer, melody_loudness);
+    PWMSetPeriod(buzzer, 1.0f / current_note->freq);
+}
+
 void BuzzerTask()
 {
+    if (is_playing_melody)
+    {
+        UpdateStartupMelody();
+        return;
+    }
+
     BuzzzerInstance *buzz;
     for (size_t i = 0; i < BUZZER_DEVICE_CNT; ++i)
     {
         buzz = buzzer_list[i];
-        if (buzz->alarm_level > ALARM_LEVEL_LOW)
+        if (buzz == NULL || buzz->alarm_level > ALARM_LEVEL_LOW)
         {
             continue;
         }

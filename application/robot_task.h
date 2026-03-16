@@ -94,6 +94,7 @@ __attribute__((noreturn)) void StartDAEMONTASK(void const *argument)
     static float daemon_dt;
     static float daemon_start;
     BuzzerInit();
+    PlayStartupMelody();
     LOGINFO("[freeRTOS] Daemon Task Start");
     for (;;)
     {

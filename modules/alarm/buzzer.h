@@ -11,6 +11,8 @@
 #define  LaFreq  880
 #define  SiFreq  988
 
+#define STARTUP_MELODY_LENGTH 7
+
 typedef enum
 {
     OCTAVE_1 = 0,
@@ -37,6 +39,13 @@ typedef enum
     ALARM_OFF = 0,
     ALARM_ON,
 }AlarmState_e;
+
+typedef struct
+{
+    uint16_t freq;
+    uint16_t duration_ms;
+} Note_t;
+
 typedef struct
 {
     AlarmLevel_e alarm_level;
@@ -57,4 +66,6 @@ void BuzzerInit();
 void BuzzerTask();
 BuzzzerInstance *BuzzerRegister(Buzzer_config_s *config);
 void AlarmSetStatus(BuzzzerInstance *buzzer, AlarmState_e state);
-#endif // !BUZZER_H
+void PlayStartupMelody();
+uint8_t IsStartupMelodyPlaying();
+#endif
