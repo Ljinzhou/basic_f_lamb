@@ -10,6 +10,7 @@ import os
 import sys
 import argparse
 import time
+import shutil
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.resolve()
@@ -51,6 +52,28 @@ def run_command(cmd, cwd=None, env=None):
     return process.returncode
 
 
+def check_build_system():
+    """检查构建系统是否正确，返回是否需要重新配置"""
+    if not BUILD_DIR.exists():
+        return True
+    
+    cmake_cache = BUILD_DIR / "CMakeCache.txt"
+    if not cmake_cache.exists():
+        return True
+    
+    content = cmake_cache.read_text(encoding='utf-8', errors='ignore')
+    
+    if "Visual Studio" in content or ".vcxproj" in content:
+        print("[WARN] 检测到 Visual Studio 生成器，需要切换到 Ninja...")
+        return True
+    
+    if "CMAKE_GENERATOR:INTERNAL=Ninja" not in content and "Ninja" not in content:
+        print("[WARN] 未检测到 Ninja 生成器，需要重新配置...")
+        return True
+    
+    return False
+
+
 def build(clean=False):
     """编译项目"""
     print("\n" + "="*50)
@@ -61,10 +84,11 @@ def build(clean=False):
         "PATH": f"{NINJA_PATH};{ARM_TOOLCHAIN_PATH};{os.environ.get('PATH', '')}"
     }
     
-    if clean or not BUILD_DIR.exists():
+    need_reconfigure = clean or not BUILD_DIR.exists() or check_build_system()
+    
+    if need_reconfigure:
         print("\n[INFO] 清理并重新配置...")
         if BUILD_DIR.exists():
-            import shutil
             shutil.rmtree(BUILD_DIR)
         BUILD_DIR.mkdir(parents=True, exist_ok=True)
         
