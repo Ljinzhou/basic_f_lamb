@@ -48,6 +48,11 @@
 #define PITCH_MAX_ANGLE 30.0f       // 云台竖直方向最大角度,向上为正(IMU反馈时填写IMU角度)
 #define PITCH_MIN_ANGLE -13.0f      // 云台竖直方向最小角度,向下为负(IMU反馈时填写IMU角度)
 // 发射参数
+/* 摩擦轮始终开启开关
+ * 1: 上电连接遥控器后摩擦轮始终旋转
+ * 0: 始终不旋转摩擦轮
+ */
+#define FRICTION_ALWAYS_ON 0
 #define ONE_BULLET_DELTA_ANGLE 36    // 发射一发弹丸拨盘转动的距离,由机械设计图纸给出
 #define REDUCTION_RATIO_LOADER 19.0f // 2006拨盘电机的减速比,英雄需要修改为3508的19.0f
 #define NUM_PER_CIRCLE 8            // 拨盘一圈的装载量

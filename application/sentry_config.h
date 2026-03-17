@@ -13,7 +13,7 @@
  *   - 底盘: 4个3508电机, ID: 1, 2, 3, 4
  *   - 云台Yaw: 1个6020电机 + 1个达妙4310电机 (ID: 0x11, Master ID: 0x21)
  *   - 云台Pitch: 1个6020电机
- * CAN2总线:
+ * CAN1总线(续):
  *   - 拨弹轮: 1个达妙2325电机 (ID: 0x10, Master ID: 0x20)
  *
  * TODO: 达妙电机和双Yaw云台结构尚未实现，需要后续完善
@@ -222,7 +222,7 @@ static inline DM2325_Config_s SentryLoaderDM2325Config(void)
  * - 摩擦轮配置待确认
  * - 拨弹轮使用达妙2325 (ID: 0x10, Master ID: 0x20)
  */
-#define SENTRY_SHOOT_CAN_HANDLE         hcan2
+#define SENTRY_SHOOT_CAN_HANDLE         hcan1
 
 /* ============================== 哨兵机器人机械参数 ============================== */
 #define SENTRY_WHEEL_BASE               350.0f

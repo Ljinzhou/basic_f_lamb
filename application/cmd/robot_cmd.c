@@ -120,7 +120,6 @@ void RobotCMDInit()
     };
     cmd_can_comm = CANCommInit(&comm_conf);
 #endif // GIMBAL_BOARD
-    gimbal_cmd_send.pitch = 0;
 
     robot_state = ROBOT_READY; // 启动时机器人进入工作模式,后续加入所有应用初始化完成之后再进入
 }
@@ -203,8 +202,8 @@ static void RemoteControlSet()
         shoot_cmd_send.friction_mode = FRICTION_ON;
     else
         shoot_cmd_send.friction_mode = FRICTION_OFF;
-    // 拨弹控制,遥控器固定为一种拨弹模式,可自行选择
-    if (rc_data[TEMP].rc.dial < -500)
+    // 拨弹控制,左上拨盘向下拨动(dial > 100)时触发连发
+    if (rc_data[TEMP].rc.dial > 100)
         shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
     else
         shoot_cmd_send.load_mode = LOAD_STOP;
@@ -322,7 +321,7 @@ static void EmergencyHandler()
     }
 
     // 拨轮向下拨超过一半进入急停模式.注意向下时拨轮是正
-    if (rc_data[TEMP].rc.dial > 300 || robot_state == ROBOT_STOP) // 还需添加重要应用和模块离线的判断
+    if (robot_state == ROBOT_STOP) // 还需添加重要应用和模块离线的判断
     {
         robot_state = ROBOT_STOP;
         gimbal_cmd_send.gimbal_mode = GIMBAL_ZERO_FORCE;
@@ -364,6 +363,12 @@ void RobotCMDTask()
         MouseKeySet();
 
     EmergencyHandler(); // 处理模块离线和遥控器急停等紧急情况
+
+#if FRICTION_ALWAYS_ON == 1
+    shoot_cmd_send.friction_mode = FRICTION_ON;
+#elif FRICTION_ALWAYS_ON == 0
+    shoot_cmd_send.friction_mode = FRICTION_OFF;
+#endif
 
     // 设置视觉发送数据,还需增加加速度和角速度数据
     // VisionSetFlag(chassis_fetch_data.enemy_color,,chassis_fetch_data.bullet_speed)
