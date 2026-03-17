@@ -20,7 +20,9 @@ HEX_FILE = BUILD_DIR / "basic_framework.hex"
 ARM_TOOLCHAIN_PATH = r"C:\Program Files (x86)\Arm\GNU Toolchain mingw-w64-i686-arm-none-eabi\bin"
 NINJA_PATH = str(Path.home() / "scoop" / "apps" / "ninja" / "current")
 
-OPENOCD_CONFIG = PROJECT_DIR / "openocd_dap.cfg"
+OPENOCD_CONFIG_DAP = PROJECT_DIR / "openocd_dap.cfg"
+OPENOCD_CONFIG_STLINK = PROJECT_DIR / "openocd_stlink.cfg"
+OPENOCD_CONFIG_JLINK = PROJECT_DIR / "openocd_jlink.cfg"
 
 
 def run_command(cmd, cwd=None, env=None):
@@ -94,11 +96,29 @@ def build(clean=False):
     return True
 
 
-def flash(file_path=None):
-    """烧录固件"""
+def flash(file_path=None, programmer="dap"):
+    """烧录固件
+    
+    Args:
+        file_path: 要烧录的文件路径
+        programmer: 烧录器类型，可选 "dap", "stlink", "jlink"
+    """
     print("\n" + "="*50)
     print("开始烧录...")
     print("="*50)
+    
+    # 根据烧录器选择配置文件
+    programmer = programmer.lower()
+    if programmer == "stlink":
+        openocd_config = OPENOCD_CONFIG_STLINK
+    elif programmer == "jlink":
+        openocd_config = OPENOCD_CONFIG_JLINK
+    else:
+        openocd_config = OPENOCD_CONFIG_DAP
+    
+    if not openocd_config.exists():
+        print(f"\n[ERROR] OpenOCD配置文件不存在: {openocd_config}")
+        return False
     
     if file_path is None:
         file_path = ELF_FILE
@@ -107,12 +127,11 @@ def flash(file_path=None):
         print(f"\n[ERROR] 文件不存在: {file_path}")
         return False
     
-    if not OPENOCD_CONFIG.exists():
-        print(f"\n[ERROR] OpenOCD配置文件不存在: {OPENOCD_CONFIG}")
-        return False
+    print(f"[INFO] 使用烧录器: {programmer}")
+    print(f"[INFO] 配置文件: {openocd_config}")
     
     file_path_str = str(file_path).replace("\\", "/")
-    openocd_config_str = str(OPENOCD_CONFIG).replace("\\", "/")
+    openocd_config_str = str(openocd_config).replace("\\", "/")
     
     cmd = [
         "openocd",
@@ -125,7 +144,7 @@ def flash(file_path=None):
     if ret != 0:
         print(f"\n[ERROR] 烧录失败! 返回码: {ret}")
         print("\n[提示] 请检查:")
-        print("  1. DAPLink是否正确连接")
+        print("  1. 调试器是否正确连接")
         print("  2. OpenOCD是否已安装并添加到PATH")
         print("  3. 目标板是否上电")
         return False
@@ -140,12 +159,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python flash.py              # 编译并烧录
-  python flash.py --build      # 仅编译
-  python flash.py --flash      # 仅烧录
-  python flash.py --flash hex  # 烧录hex文件
-  python flash.py --clean      # 清理后重新编译
-  python flash.py --build --flash  # 编译后烧录
+  python flash.py                      # 编译并烧录 (默认DAPLink)
+  python flash.py --build               # 仅编译
+  python flash.py --flash              # 仅烧录
+  python flash.py --flash hex          # 烧录hex文件
+  python flash.py --clean               # 清理后重新编译
+  python flash.py --build --flash      # 编译后烧录
+  python flash.py --programmer stlink   # 使用STLink烧录
+  python flash.py --programmer jlink    # 使用JLink烧录
+  python flash.py -p stlink -f hex     # 使用STLink烧录hex文件
         """
     )
     
@@ -167,6 +189,14 @@ def main():
         help="清理后重新编译"
     )
     
+    parser.add_argument(
+        "--programmer", "-p",
+        dest="programmer",
+        default="dap",
+        choices=["dap", "stlink", "jlink"],
+        help="烧录器类型 (默认: dap)"
+    )
+    
     args = parser.parse_args()
     
     do_build = args.build or args.clean or (not args.flash)
@@ -180,7 +210,7 @@ def main():
     
     if do_flash:
         flash_file = HEX_FILE if args.flash == "hex" else ELF_FILE
-        if not flash(file_path=flash_file):
+        if not flash(file_path=flash_file, programmer=args.programmer):
             sys.exit(1)
     
     elapsed = time.time() - start_time

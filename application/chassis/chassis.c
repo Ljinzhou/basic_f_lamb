@@ -17,9 +17,11 @@
 #include "super_cap.h"
 #include "message_center.h"
 #include "referee_task.h"
+#include "rm_referee.h"
 
 #include "general_def.h"
 #include "bsp_dwt.h"
+#include "bsp_log.h"
 #include "referee_UI.h"
 #include "arm_math.h"
 
@@ -197,7 +199,18 @@ void ChassisTask()
     chassis_cmd_recv = *(Chassis_Ctrl_Cmd_s *)CANCommGet(chasiss_can_comm);
 #endif // CHASSIS_BOARD
 
-    SetPowerLimit(referee_data->GameRobotState.chassis_power_limit);//设置功率限制
+    // 功率限制设置：根据 REFEREE_POWER_CTRL_ENABLE 开关决定策略
+#if REFEREE_POWER_CTRL_ENABLE
+    if (RefereeIsOnline())
+        SetPowerLimit(referee_data->GameRobotState.chassis_power_limit); // 裁判系统在线,使用裁判系统功率限制
+    else
+    {
+        SetPowerLimit(CHASSIS_DEFAULT_POWER_LIMIT); // 裁判系统离线,使用默认功率限制
+        LOGWARNING("[Chassis] Referee offline, using default power limit: %.1f W", CHASSIS_DEFAULT_POWER_LIMIT);
+    }
+#else
+    SetPowerLimit(CHASSIS_DEFAULT_POWER_LIMIT); // 裁判系统检测已关闭,直接使用默认功率
+#endif
     if (chassis_cmd_recv.chassis_mode == CHASSIS_ZERO_FORCE)
     { // 如果出现重要模块离线或遥控器设置为急停,让电机停止
         DJIMotorStop(motor_lf);

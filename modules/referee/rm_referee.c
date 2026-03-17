@@ -119,6 +119,11 @@ static void RefereeLostCallback(void *arg)
 	LOGWARNING("[rm_ref] lost referee data");
 }
 
+uint8_t RefereeIsOnline(void)
+{
+    return DaemonIsOnline(referee_daemon);
+}
+
 /* 裁判系统通信初始化 */
 referee_info_t *RefereeInit(UART_HandleTypeDef *referee_usart_handle)
 {

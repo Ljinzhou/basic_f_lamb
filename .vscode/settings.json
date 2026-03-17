@@ -12,6 +12,7 @@
         "arm_math.h": "c",
         "can_comm.h": "c",
         "dji_motor.h": "c",
-        "bsp_log.h": "c"
+        "bsp_log.h": "c",
+        "master_process.h": "c"
     }
 }

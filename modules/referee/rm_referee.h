@@ -89,6 +89,12 @@ typedef struct
 referee_info_t *RefereeInit(UART_HandleTypeDef *referee_usart_handle);
 
 /**
+ * @brief 查询裁判系统是否在线
+ * @return 1:在线 0:离线或未初始化
+ */
+uint8_t RefereeIsOnline(void);
+
+/**
  * @brief UI绘制和交互数的发送接口,由UI绘制任务和多机通信函数调用
  * @note 内部包含了一个实时系统的延时函数,这是因为裁判系统接收CMD数据至高位10Hz
  *

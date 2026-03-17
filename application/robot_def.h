@@ -25,8 +25,8 @@
 // #define VISION_USE_UART // 使用串口发送视觉数据
 
 /* 机器人类型定义,只能定义一个! */
-#define ROBOT_HERO      // 英雄机器人
-// #define ROBOT_SENTRY // 哨兵机器人
+// #define ROBOT_HERO      // 英雄机器人
+#define ROBOT_SENTRY // 哨兵机器人
 
 // 检查是否出现机器人类型定义冲突,只允许一个机器人定义存在
 #if (defined(ROBOT_HERO) && defined(ROBOT_SENTRY))
@@ -51,6 +51,13 @@
 #define ONE_BULLET_DELTA_ANGLE 36    // 发射一发弹丸拨盘转动的距离,由机械设计图纸给出
 #define REDUCTION_RATIO_LOADER 19.0f // 2006拨盘电机的减速比,英雄需要修改为3508的19.0f
 #define NUM_PER_CIRCLE 8            // 拨盘一圈的装载量
+/* 裁判系统功率控制开关
+ * 开启(1): 检测裁判系统在线状态,在线时从裁判系统读取功率限制,离线时使用默认功率
+ * 关闭(0): 绕过裁判系统检测,直接使用 CHASSIS_DEFAULT_POWER_LIMIT
+ */
+#define REFEREE_POWER_CTRL_ENABLE 1
+#define CHASSIS_DEFAULT_POWER_LIMIT 50.0f // 裁判系统离线或关闭检测时的默认功率限制(W)
+
 // 机器人底盘修改的参数,单位为mm(毫米)
 #define WHEEL_BASE 350              // 纵向轴距(前进后退方向)
 #define TRACK_WIDTH 300             // 横向轮距(左右平移方向)
