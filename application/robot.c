@@ -30,8 +30,8 @@ void RobotInit()
     BSPInit();
 
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
+    GimbalInit();
     RobotCMDInit();
-    // GimbalInit();
     // ShootInit();
 #endif
 
@@ -49,7 +49,7 @@ void RobotTask()
 {
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     RobotCMDTask();
-    // GimbalTask();
+    GimbalTask();
     // ShootTask();
 #endif
 

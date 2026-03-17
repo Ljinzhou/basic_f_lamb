@@ -13,6 +13,8 @@
 #include "bsp_dwt.h"
 #include "bsp_log.h"
 
+static attitude_t *cmd_imu_data; // cmd模块持有的IMU数据指针,用于pitch初始化
+
 // 私有宏,自动将编码器转换成角度值
 #define YAW_ALIGN_ANGLE (YAW_CHASSIS_ALIGN_ECD * ECD_ANGLE_COEF_DJI) // 对齐时的角度,0-360
 #define PTICH_HORIZON_ANGLE (PITCH_HORIZON_ECD * ECD_ANGLE_COEF_DJI) // pitch水平时电机的角度,0-360
@@ -94,6 +96,9 @@ void RobotCMDInit()
    rc_data = RemoteControlInit(&huart3);   // 修改为对应串口,注意如果是自研板dbus协议串口需选用添加了反相器的那个
     vision_recv_data = VisionInit(&huart1); // 视觉通信串口
 
+    cmd_imu_data = INS_Init(); // 获取IMU数据指针,用于pitch初始化
+    gimbal_cmd_send.pitch = cmd_imu_data->Pitch; // 初始化pitch为当前IMU角度,防止上电后云台突转
+
     gimbal_cmd_pub = PubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
     gimbal_feed_sub = SubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
     shoot_cmd_pub = PubRegister("shoot_cmd", sizeof(Shoot_Ctrl_Cmd_s));
@@ -174,10 +179,14 @@ static void RemoteControlSet()
     // 左侧开关状态为[下],或视觉未识别到目标,纯遥控器拨杆控制
     if (switch_is_down(rc_data[TEMP].rc.switch_left) || vision_recv_data->target_state == NO_TARGET)
     { // 按照摇杆的输出大小进行角度增量,增益系数需调整
-        gimbal_cmd_send.yaw += 0.005f * (float)rc_data[TEMP].rc.rocker_l_;
-        gimbal_cmd_send.pitch += 0.001f * (float)rc_data[TEMP].rc.rocker_l1;
+        gimbal_cmd_send.yaw += 0.002f * (float)rc_data[TEMP].rc.rocker_l_;
+        gimbal_cmd_send.pitch += 0.0004f * (float)rc_data[TEMP].rc.rocker_l1;
     }
-    // 云台软件限位
+    // 云台pitch软限位
+    if (gimbal_cmd_send.pitch > PITCH_MAX_ANGLE)
+        gimbal_cmd_send.pitch = PITCH_MAX_ANGLE;
+    if (gimbal_cmd_send.pitch < PITCH_MIN_ANGLE)
+        gimbal_cmd_send.pitch = PITCH_MIN_ANGLE;
 
     // 底盘参数,目前没有加入小陀螺(调试似乎暂时没有必要),系数需要调整
     chassis_cmd_send.vx = 10.0f * (float)rc_data[TEMP].rc.rocker_r_; // _水平方向
@@ -214,6 +223,11 @@ static void MouseKeySet()
 
     gimbal_cmd_send.yaw += (float)rc_data[TEMP].mouse.x / 660 * 10; // 系数待测
     gimbal_cmd_send.pitch += (float)rc_data[TEMP].mouse.y / 660 * 10;
+    // 云台pitch软限位
+    if (gimbal_cmd_send.pitch > PITCH_MAX_ANGLE)
+        gimbal_cmd_send.pitch = PITCH_MAX_ANGLE;
+    if (gimbal_cmd_send.pitch < PITCH_MIN_ANGLE)
+        gimbal_cmd_send.pitch = PITCH_MIN_ANGLE;
 
     switch (rc_data[TEMP].key_count[KEY_PRESS][Key_Z] % 3) // Z键设置弹速
     {
@@ -291,12 +305,23 @@ static void MouseKeySet()
  * @brief  紧急停止,包括遥控器左上侧拨轮打满/重要模块离线/双板通信失效等
  *         停止的阈值'300'待修改成合适的值,或改为开关控制.
  *
- * @todo   后续修改为遥控器离线则电机停止(关闭遥控器急停),通过给遥控器模块添加daemon实现
- *
  */
 static void EmergencyHandler()
 {
-    // 拨轮的向下拨超过一半进入急停模式.注意向打时下拨轮是正
+    // 遥控器离线 → 强制急停
+    if (!RemoteControlIsOnline())
+    {
+        robot_state = ROBOT_STOP;
+        gimbal_cmd_send.gimbal_mode = GIMBAL_ZERO_FORCE;
+        chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
+        shoot_cmd_send.shoot_mode = SHOOT_OFF;
+        shoot_cmd_send.friction_mode = FRICTION_OFF;
+        shoot_cmd_send.load_mode = LOAD_STOP;
+        LOGERROR("[CMD] RC offline, emergency stop!");
+        return; // 遥控器离线时不做任何恢复判断
+    }
+
+    // 拨轮向下拨超过一半进入急停模式.注意向下时拨轮是正
     if (rc_data[TEMP].rc.dial > 300 || robot_state == ROBOT_STOP) // 还需添加重要应用和模块离线的判断
     {
         robot_state = ROBOT_STOP;

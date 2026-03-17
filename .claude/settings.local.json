@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(arm-none-eabi-nm build/basic_framework.elf)",
+      "Bash(grep -i ' INS$\\\\| INS ')",
+      "Bash(where arm-none-eabi-nm:*)",
+      "Bash(find /c /d -name arm-none-eabi-nm.exe)",
+      "Bash(python -m pyocd --version)",
+      "Bash(pip install:*)",
+      "Bash(python tools/read_imu.py --elf build/basic_framework.elf --list-only)",
+      "Bash(python tools/read_imu.py --elf build/basic_framework.elf --target stm32f407ig)",
+      "Bash(python -m pyocd list --targets)",
+      "Bash(python -m pyocd pack find stm32f407)",
+      "Bash(\"/c/Users/77162/AppData/Local/stm32cube/bundles/gnu-tools-for-stm32/13.3.1+st.9/bin/arm-none-eabi-nm.exe\" build/basic_framework.elf)",
+      "Bash(python -m pyocd pack install STM32F407IGHx)"
+    ]
+  }
+}
