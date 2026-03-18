@@ -8,6 +8,10 @@
 
 static attitude_t *gimba_IMU_data; // 云台IMU数据
 static DJIMotorInstance *yaw_motor, *pitch_motor;
+static float gimbal_yaw_angle_feedback;
+static float gimbal_yaw_speed_feedback;
+static float gimbal_pitch_angle_feedback;
+static float gimbal_pitch_speed_feedback;
 
 static Publisher_t *gimbal_pub;                   // 云台应用消息发布者(云台反馈给cmd)
 static Subscriber_t *gimbal_sub;                  // cmd控制消息订阅者
@@ -18,6 +22,10 @@ static Gimbal_Ctrl_Cmd_s gimbal_cmd_recv;         // 来自cmd的控制信息
 void GimbalInit()
 {   
     gimba_IMU_data = INS_Init(); // IMU先初始化,获取姿态数据指针赋给yaw电机的其他数据来源
+    gimbal_yaw_angle_feedback = GYRO2GIMBAL_DIR_YAW * gimba_IMU_data->YawTotalAngle;
+    gimbal_yaw_speed_feedback = GYRO2GIMBAL_DIR_YAW * gimba_IMU_data->Gyro[2];
+    gimbal_pitch_angle_feedback = GYRO2GIMBAL_DIR_PITCH * gimba_IMU_data->Pitch;
+    gimbal_pitch_speed_feedback = GYRO2GIMBAL_DIR_PITCH * gimba_IMU_data->Gyro[0];
     // YAW
     Motor_Init_Config_s yaw_config = {
         .can_init_config = {
@@ -43,9 +51,9 @@ void GimbalInit()
                 .IntegralLimit = 3000,
                 .MaxOut = 20000,
             },
-            .other_angle_feedback_ptr = &gimba_IMU_data->YawTotalAngle,
+            .other_angle_feedback_ptr = &gimbal_yaw_angle_feedback,
             // 还需要增加角速度额外反馈指针,注意方向,ins_task.md中有c板的bodyframe坐标系说明
-            .other_speed_feedback_ptr = &gimba_IMU_data->Gyro[2],
+            .other_speed_feedback_ptr = &gimbal_yaw_speed_feedback,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
@@ -68,23 +76,23 @@ void GimbalInit()
                 .Kd = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .IntegralLimit = 100,
-                .MaxOut = 500,
+                .MaxOut = 1000,
             },
             .speed_PID = {
-                .Kp = 50,  // 50
-                .Ki = 350, // 350
-                .Kd = 0,   // 0
+                .Kp = 50,   // 50
+                .Ki = 350,  // 350
+                .Kd = 0,    // 0
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .IntegralLimit = 2500,
                 .MaxOut = 20000,
             },
-            .other_angle_feedback_ptr = &gimba_IMU_data->Pitch,
+            .other_angle_feedback_ptr = &gimbal_pitch_angle_feedback,
             // 还需要增加角速度额外反馈指针,注意方向,ins_task.md中有c板的bodyframe坐标系说明
-            .other_speed_feedback_ptr = (&gimba_IMU_data->Gyro[0]),
+            .other_speed_feedback_ptr = &gimbal_pitch_speed_feedback,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
-            .speed_feedback_source = OTHER_FEED,
+            .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type = ANGLE_LOOP,
             .close_loop_type = SPEED_LOOP | ANGLE_LOOP,
             .motor_reverse_flag = MOTOR_DIRECTION_NORMAL,
@@ -102,6 +110,11 @@ void GimbalInit()
 /* 机器人云台控制核心任务,后续考虑只保留IMU控制,不再需要电机的反馈 */
 void GimbalTask()
 {
+    gimbal_yaw_angle_feedback = GYRO2GIMBAL_DIR_YAW * gimba_IMU_data->YawTotalAngle;
+    gimbal_yaw_speed_feedback = GYRO2GIMBAL_DIR_YAW * gimba_IMU_data->Gyro[2];
+    gimbal_pitch_angle_feedback = GYRO2GIMBAL_DIR_PITCH * gimba_IMU_data->Pitch;
+    gimbal_pitch_speed_feedback = GYRO2GIMBAL_DIR_PITCH * gimba_IMU_data->Gyro[0];
+
     // 获取云台控制数据
     // 后续增加未收到数据的处理
     SubGetMessage(gimbal_sub, &gimbal_cmd_recv);
@@ -130,10 +143,10 @@ void GimbalTask()
     case GIMBAL_FREE_MODE: // 后续删除,或加入云台追地盘的跟随模式(响应速度更快)
         DJIMotorEnable(yaw_motor);
         DJIMotorEnable(pitch_motor);
-        DJIMotorChangeFeed(yaw_motor, ANGLE_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(yaw_motor, SPEED_LOOP, OTHER_FEED);
+        DJIMotorChangeFeed(yaw_motor, ANGLE_LOOP, MOTOR_FEED);
+        DJIMotorChangeFeed(yaw_motor, SPEED_LOOP, MOTOR_FEED);
         DJIMotorChangeFeed(pitch_motor, ANGLE_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(pitch_motor, SPEED_LOOP, OTHER_FEED);
+        DJIMotorChangeFeed(pitch_motor, SPEED_LOOP, MOTOR_FEED);
         DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw和pitch会在robot_cmd中处理好多圈和单圈
         DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch);
         break;

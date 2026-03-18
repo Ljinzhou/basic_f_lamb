@@ -25,8 +25,8 @@
 // #define VISION_USE_UART // 使用串口发送视觉数据
 
 /* 机器人类型定义,只能定义一个! */
-// #define ROBOT_HERO      // 英雄机器人
-#define ROBOT_SENTRY // 哨兵机器人
+#define ROBOT_HERO      // 英雄机器人
+// #define ROBOT_SENTRY // 哨兵机器人
 
 // 检查是否出现机器人类型定义冲突,只允许一个机器人定义存在
 #if (defined(ROBOT_HERO) && defined(ROBOT_SENTRY))
@@ -71,7 +71,7 @@
 #define RADIUS_WHEEL 60             // 轮子半径
 #define REDUCTION_RATIO_WHEEL 19.0f // 电机减速比,因为编码器量测的是转子的速度而不是输出轴的速度故需进行转换
 
-#define GYRO2GIMBAL_DIR_YAW 1   // 陀螺仪数据相较于云台的yaw的方向,1为相同,-1为相反
+#define GYRO2GIMBAL_DIR_YAW -1  // 陀螺仪数据相较于云台的yaw的方向,1为相同,-1为相反
 #define GYRO2GIMBAL_DIR_PITCH 1 // 陀螺仪数据相较于云台的pitch的方向,1为相同,-1为相反
 #define GYRO2GIMBAL_DIR_ROLL 1  // 陀螺仪数据相较于云台的roll的方向,1为相同,-1为相反
 
@@ -114,6 +114,7 @@ typedef enum
     CHASSIS_ROTATE,            // 小陀螺模式
     CHASSIS_NO_FOLLOW,         // 不跟随，允许全向平移
     CHASSIS_FOLLOW_GIMBAL_YAW, // 跟随模式，底盘叠加角度环控制
+    CHASSIS_RAW,               // 直接使用外部给定的wz参考值
 } chassis_mode_e;
 
 // 云台模式设置
@@ -149,6 +150,7 @@ typedef enum
     LOAD_1_BULLET,  // 单发
     LOAD_3_BULLET,  // 三发
     LOAD_BURSTFIRE, // 连发
+    LOAD_EXTERNAL_SPEED, // 直接使用外部给定拨盘转速
 } loader_mode_e;
 
 // 功率限制,从裁判系统获取,是否有必要保留?
@@ -196,7 +198,11 @@ typedef struct
     friction_mode_e friction_mode;
     Bullet_Speed_e bullet_speed; // 弹速枚举
     uint8_t rest_heat;
+    uint8_t use_custom_friction_speed;
+    uint8_t use_custom_loader_speed;
     float shoot_rate; // 连续发射的射频,unit per s,发/秒
+    float friction_speed;
+    float loader_speed;
 } Shoot_Ctrl_Cmd_s;
 
 /* ----------------gimbal/shoot/chassis发布的反馈数据----------------*/

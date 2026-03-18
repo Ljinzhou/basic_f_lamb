@@ -8,8 +8,9 @@
 #include "general_def.h"
 
 /* 对于双发射机构的机器人,将下面的数据封装成结构体即可,生成两份shoot应用实例 */
-static DJIMotorInstance *friction_l, *friction_r; // 摩擦轮电机
-static DMMotorInstance *loader; // 拨盘电机(达妙2325)
+static DJIMotorInstance *friction_l, *friction_r, *friction_3; // 摩擦轮电机
+static DJIMotorInstance *loader; // 拨盘电机
+static DMMotorInstance *loader_dm; // 拨盘电机(达妙2325哨兵专用)
 // static servo_instance *lid; 需要增加弹舱盖
 
 static Publisher_t *shoot_pub;
@@ -22,7 +23,20 @@ static float hibernate_time = 0, dead_time = 0;
 
 void ShootInit()
 {
-    // 左摩擦轮
+#if defined(ROBOT_HERO)
+    // 英雄机器人: 摩擦轮3个M3508( CAN2, ID 1/2/3 ) + 拨盘1个M3508( CAN2, ID 7 )
+    Motor_Init_Config_s friction_l_config = HeroFrictionMotorConfig(HERO_FRICTION_L_ID, MOTOR_DIRECTION_NORMAL);
+    Motor_Init_Config_s friction_r_config = HeroFrictionMotorConfig(HERO_FRICTION_R_ID, MOTOR_DIRECTION_REVERSE);
+    Motor_Init_Config_s friction_3_config = HeroFrictionMotorConfig(HERO_FRICTION_3_ID, MOTOR_DIRECTION_NORMAL);
+    Motor_Init_Config_s loader_config = HeroLoaderMotorConfig();
+    friction_l = DJIMotorInit(&friction_l_config);
+    friction_r = DJIMotorInit(&friction_r_config);
+    friction_3 = DJIMotorInit(&friction_3_config);
+    loader = DJIMotorInit(&loader_config);
+    (void)loader_dm; // 哨兵专用变量
+
+#elif defined(ROBOT_SENTRY)
+    // 哨兵机器人: 摩擦轮2个M3508( CAN1, ID 7/8 ) + 拨盘达妙2325( CAN1, ID 0x10/0x20 )
     Motor_Init_Config_s friction_config = {
         .can_init_config = {
             .can_handle = &hcan1,
@@ -48,18 +62,19 @@ void ShootInit()
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
-
             .outer_loop_type = SPEED_LOOP,
             .close_loop_type = SPEED_LOOP | CURRENT_LOOP,
             .motor_reverse_flag = MOTOR_DIRECTION_NORMAL,
         },
         .motor_type = M3508};
-    friction_config.can_init_config.tx_id = 7,
+    friction_config.can_init_config.tx_id = 7;
     friction_l = DJIMotorInit(&friction_config);
 
-    friction_config.can_init_config.tx_id = 8; // 右摩擦轮,改txid和方向就行
+    friction_config.can_init_config.tx_id = 8;
     friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
     friction_r = DJIMotorInit(&friction_config);
+
+    friction_3 = NULL;
 
     // 拨盘电机(达妙2325, CAN1, ID:0x10, Master ID:0x20)
     Motor_Init_Config_s loader_config = {
@@ -74,7 +89,10 @@ void ShootInit()
             .motor_reverse_flag = MOTOR_DIRECTION_NORMAL,
         },
     };
-    loader = DMMotorInit(&loader_config);
+    loader = NULL;
+    loader_dm = DMMotorInit(&loader_config);
+    (void)loader; // 英雄专用变量
+#endif
 
     shoot_pub = PubRegister("shoot_feed", sizeof(Shoot_Upload_Data_s));
     shoot_sub = SubRegister("shoot_cmd", sizeof(Shoot_Ctrl_Cmd_s));
@@ -91,46 +109,80 @@ void ShootTask()
     {
         DJIMotorStop(friction_l);
         DJIMotorStop(friction_r);
-        DMMotorStop(loader);
+        if (friction_3 != NULL)
+            DJIMotorStop(friction_3);
+#if defined(ROBOT_HERO)
+        DJIMotorStop(loader);
+#elif defined(ROBOT_SENTRY)
+        DMMotorStop(loader_dm);
+#endif
     }
     else // 恢复运行
     {
         DJIMotorEnable(friction_l);
         DJIMotorEnable(friction_r);
-        DMMotorEnable(loader);
+        if (friction_3 != NULL)
+            DJIMotorEnable(friction_3);
+#if defined(ROBOT_HERO)
+        DJIMotorEnable(loader);
+#elif defined(ROBOT_SENTRY)
+        DMMotorEnable(loader_dm);
+#endif
     }
-
-    // 如果上一次触发单发或3发指令的时间加上不应期仍然大于当前时间(尚未休眠完毕),直接返回即可
-    // 单发模式主要提供给能量机关激活使用(以及英雄的射击大部分处于单发)
-    // if (hibernate_time + dead_time > DWT_GetTimeline_ms())
-    //     return;
 
     // 若不在休眠状态,根据robotCMD传来的控制模式进行拨盘电机参考值设定和模式切换
     switch (shoot_cmd_recv.load_mode)
     {
     // 停止拨盘
     case LOAD_STOP:
-        DMMotorSetRef(loader, 0); // 力矩为0,停止
+#if defined(ROBOT_HERO)
+        DJIMotorSetRef(loader, 0);
+#elif defined(ROBOT_SENTRY)
+        DMMotorSetRef(loader_dm, 0);
+#endif
         break;
     // 单发模式
     case LOAD_1_BULLET:
-        DMMotorSetRef(loader, 2.0f); // 施加固定力矩推动一段时间
+#if defined(ROBOT_HERO)
+        DJIMotorSetRef(loader, 1000.0f);
+#elif defined(ROBOT_SENTRY)
+        DMMotorSetRef(loader_dm, 2.0f);
+#endif
         hibernate_time = DWT_GetTimeline_ms();
         dead_time = 150;
         break;
     // 三连发
     case LOAD_3_BULLET:
-        DMMotorSetRef(loader, 2.0f);
+#if defined(ROBOT_HERO)
+        DJIMotorSetRef(loader, 1000.0f);
+#elif defined(ROBOT_SENTRY)
+        DMMotorSetRef(loader_dm, 2.0f);
+#endif
         hibernate_time = DWT_GetTimeline_ms();
         dead_time = 450;
         break;
     // 连发模式,持续施加力矩
     case LOAD_BURSTFIRE:
-        DMMotorSetRef(loader, 2.0f); // 力矩值需根据实际情况调整
+#if defined(ROBOT_HERO)
+        DJIMotorSetRef(loader, 1000.0f);
+#elif defined(ROBOT_SENTRY)
+        DMMotorSetRef(loader_dm, 2.0f);
+#endif
         break;
     // 拨盘反转
     case LOAD_REVERSE:
-        DMMotorSetRef(loader, -2.0f);
+#if defined(ROBOT_HERO)
+        DJIMotorSetRef(loader, -1000.0f);
+#elif defined(ROBOT_SENTRY)
+        DMMotorSetRef(loader_dm, -2.0f);
+#endif
+        break;
+    case LOAD_EXTERNAL_SPEED:
+#if defined(ROBOT_HERO)
+        DJIMotorSetRef(loader, shoot_cmd_recv.loader_speed);
+#elif defined(ROBOT_SENTRY)
+        DMMotorSetRef(loader_dm, shoot_cmd_recv.loader_speed);
+#endif
         break;
     default:
         while (1)
@@ -140,24 +192,40 @@ void ShootTask()
     // 确定是否开启摩擦轮,后续可能修改为键鼠模式下始终开启摩擦轮(上场时建议一直开启)
     if (shoot_cmd_recv.friction_mode == FRICTION_ON)
     {
+        if (shoot_cmd_recv.use_custom_friction_speed)
+        {
+            DJIMotorSetRef(friction_l, shoot_cmd_recv.friction_speed);
+            DJIMotorSetRef(friction_r, shoot_cmd_recv.friction_speed);
+            if (friction_3 != NULL)
+                DJIMotorSetRef(friction_3, shoot_cmd_recv.friction_speed);
+            goto friction_done;
+        }
         // 根据收到的弹速设置设定摩擦轮电机参考值,需实测后填入
         switch (shoot_cmd_recv.bullet_speed)
         {
         case SMALL_AMU_15:
             DJIMotorSetRef(friction_l, 0);
             DJIMotorSetRef(friction_r, 0);
+            if (friction_3 != NULL)
+                DJIMotorSetRef(friction_3, 0);
             break;
         case SMALL_AMU_18:
             DJIMotorSetRef(friction_l, 0);
             DJIMotorSetRef(friction_r, 0);
+            if (friction_3 != NULL)
+                DJIMotorSetRef(friction_3, 0);
             break;
         case SMALL_AMU_30:
             DJIMotorSetRef(friction_l, 0);
             DJIMotorSetRef(friction_r, 0);
+            if (friction_3 != NULL)
+                DJIMotorSetRef(friction_3, 0);
             break;
         default: // 当前为了调试设定的默认值4000,因为还没有加入裁判系统无法读取弹速.
             DJIMotorSetRef(friction_l, 30000);
             DJIMotorSetRef(friction_r, 30000);
+            if (friction_3 != NULL)
+                DJIMotorSetRef(friction_3, 30000);
             break;
         }
     }
@@ -165,7 +233,11 @@ void ShootTask()
     {
         DJIMotorSetRef(friction_l, 0);
         DJIMotorSetRef(friction_r, 0);
+        if (friction_3 != NULL)
+            DJIMotorSetRef(friction_3, 0);
     }
+
+friction_done:
 
     // 开关弹舱盖
     if (shoot_cmd_recv.lid_mode == LID_CLOSE)

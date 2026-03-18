@@ -6,6 +6,16 @@
 
 #define VISION_RECV_SIZE 18u // 当前为固定值,36字节
 #define VISION_SEND_SIZE 36u
+#define USB_CONTROL_FLOAT_COUNT 4u
+
+#define VISION_RECV_CMD_ID 0x0001u
+#define VISION_SEND_CMD_ID 0x0002u
+#define USB_CTRL_GIMBAL_CMD_ID 0x0101u
+#define USB_CTRL_CHASSIS_CMD_ID 0x0102u
+#define USB_CTRL_SHOOT_CMD_ID 0x0103u
+#define USB_STATUS_GIMBAL_CMD_ID 0x0201u
+#define USB_STATUS_CHASSIS_CMD_ID 0x0202u
+#define USB_STATUS_SHOOT_CMD_ID 0x0203u
 
 #pragma pack(1)
 typedef enum
@@ -79,6 +89,106 @@ typedef struct
 	float pitch;
 	float roll;
 } Vision_Send_s;
+
+typedef enum
+{
+	HOST_GIMBAL_ZERO_FORCE = 0,
+	HOST_GIMBAL_FREE_MODE = 1,
+	HOST_GIMBAL_GYRO_MODE = 2,
+} Host_Gimbal_Mode_e;
+
+typedef enum
+{
+	HOST_CHASSIS_ZERO_FORCE = 0,
+	HOST_CHASSIS_NO_FOLLOW = 1,
+	HOST_CHASSIS_FOLLOW_GIMBAL = 2,
+	HOST_CHASSIS_RAW = 3,
+	HOST_CHASSIS_ROTATE = 4,
+} Host_Chassis_Mode_e;
+
+typedef enum
+{
+	HOST_LOADER_STOP = 0,
+	HOST_LOADER_SINGLE = 1,
+	HOST_LOADER_TRIPLE = 2,
+	HOST_LOADER_BURST = 3,
+	HOST_LOADER_REVERSE = 4,
+	HOST_LOADER_SPEED = 5,
+} Host_Loader_Mode_e;
+
+typedef struct
+{
+	uint8_t active;
+	uint8_t auto_aim_enabled;
+	uint8_t relative_target;
+	Host_Gimbal_Mode_e mode;
+	float yaw;
+	float pitch;
+} USB_Gimbal_Ctrl_s;
+
+typedef struct
+{
+	uint8_t active;
+	uint8_t stop_request;
+	Host_Chassis_Mode_e mode;
+	float vx;
+	float vy;
+	float wz;
+	float speed_scale;
+} USB_Chassis_Ctrl_s;
+
+typedef struct
+{
+	uint8_t active;
+	uint8_t shoot_enable;
+	uint8_t friction_on;
+	uint8_t loader_on;
+	uint8_t lid_open;
+	Host_Loader_Mode_e loader_mode;
+	float friction_speed;
+	float loader_speed;
+	float shoot_rate;
+} USB_Shoot_Ctrl_s;
+
+typedef struct
+{
+	uint8_t host_enabled;
+	USB_Gimbal_Ctrl_s gimbal;
+	USB_Chassis_Ctrl_s chassis;
+	USB_Shoot_Ctrl_s shoot;
+} USB_Control_Data_s;
+
+typedef struct
+{
+	uint8_t mode;
+	uint8_t online;
+	float yaw;
+	float pitch;
+	float yaw_motor_angle;
+	float yaw_total_angle;
+} USB_Gimbal_Status_s;
+
+typedef struct
+{
+	uint8_t mode;
+	uint8_t online;
+	float vx;
+	float vy;
+	float wz;
+	float offset_angle;
+} USB_Chassis_Status_s;
+
+typedef struct
+{
+	uint8_t shoot_mode;
+	uint8_t friction_mode;
+	uint8_t loader_mode;
+	uint8_t online;
+	float friction_speed;
+	float loader_speed;
+	float shoot_rate;
+	float bullet_speed;
+} USB_Shoot_Status_s;
 #pragma pack()
 
 /**
@@ -110,5 +220,15 @@ void VisionSetFlag(Enemy_Color_e enemy_color, Work_Mode_e work_mode, Bullet_Spee
  * @param pitch
  */
 void VisionSetAltitude(float yaw, float pitch, float roll);
+
+const USB_Control_Data_s *USBControlGetData(void);
+
+uint8_t USBControlIsOnline(void);
+
+void USBSetGimbalStatus(float yaw, float pitch, float yaw_motor_angle, float yaw_total_angle, uint8_t mode, uint8_t online);
+
+void USBSetChassisStatus(float vx, float vy, float wz, float offset_angle, uint8_t mode, uint8_t online);
+
+void USBSetShootStatus(float friction_speed, float loader_speed, float shoot_rate, float bullet_speed, uint8_t shoot_mode, uint8_t friction_mode, uint8_t loader_mode, uint8_t online);
 
 #endif // !MASTER_PROCESS_H
