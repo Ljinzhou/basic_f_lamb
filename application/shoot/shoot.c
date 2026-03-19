@@ -39,7 +39,7 @@ void ShootInit()
     // 哨兵机器人: 摩擦轮2个M3508( CAN1, ID 7/8 ) + 拨盘达妙2325( CAN1, ID 0x10/0x20 )
     Motor_Init_Config_s friction_config = {
         .can_init_config = {
-            .can_handle = &hcan1,
+            .can_handle = &SENTRY_SHOOT_CAN_HANDLE,
         },
         .controller_param_init_config = {
             .speed_PID = {
@@ -67,10 +67,10 @@ void ShootInit()
             .motor_reverse_flag = MOTOR_DIRECTION_NORMAL,
         },
         .motor_type = M3508};
-    friction_config.can_init_config.tx_id = 7;
+    friction_config.can_init_config.tx_id = SENTRY_FRICTION_L_ID;
     friction_l = DJIMotorInit(&friction_config);
 
-    friction_config.can_init_config.tx_id = 8;
+    friction_config.can_init_config.tx_id = SENTRY_FRICTION_R_ID;
     friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
     friction_r = DJIMotorInit(&friction_config);
 
@@ -79,7 +79,7 @@ void ShootInit()
     // 拨盘电机(达妙2325, CAN1, ID:0x10, Master ID:0x20)
     Motor_Init_Config_s loader_config = {
         .can_init_config = {
-            .can_handle = &hcan1,
+            .can_handle = &SENTRY_SHOOT_CAN_HANDLE,
             .tx_id = SENTRY_LOADER_DM2325_ID,
             .rx_id = SENTRY_LOADER_DM2325_MASTER_ID,
         },

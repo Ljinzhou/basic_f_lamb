@@ -12,6 +12,7 @@
 // bsp
 #include "bsp_dwt.h"
 #include "bsp_log.h"
+#include <math.h>
 
 static attitude_t *cmd_imu_data; // cmd模块持有的IMU数据指针,用于pitch初始化
 
@@ -42,10 +43,31 @@ static Subscriber_t *gimbal_feed_sub;          // 云台反馈信息订阅者
 static Gimbal_Ctrl_Cmd_s gimbal_cmd_send;      // 传递给云台的控制信息
 static Gimbal_Upload_Data_s gimbal_fetch_data; // 从云台获取的反馈信息
 
+static void SyncPitchCommandWithFeedback(void)
+{
+    float pitch_feedback = GYRO2GIMBAL_DIR_PITCH * gimbal_fetch_data.gimbal_imu_data.Pitch;
+
+    LIMIT_MIN_MAX(pitch_feedback, PITCH_MIN_ANGLE, PITCH_MAX_ANGLE);
+
+    if ((pitch_feedback >= (PITCH_MAX_ANGLE - PITCH_UPPER_LIMIT_SOFT_ZONE) && gimbal_cmd_send.pitch > pitch_feedback) ||
+        (pitch_feedback <= (PITCH_MIN_ANGLE + PITCH_LIMIT_SOFT_ZONE) && gimbal_cmd_send.pitch < pitch_feedback) ||
+        fabsf(gimbal_cmd_send.pitch - pitch_feedback) > PITCH_CMD_SYNC_ERROR)
+    {
+        gimbal_cmd_send.pitch = pitch_feedback;
+    }
+}
+
 static Publisher_t *shoot_cmd_pub;           // 发射控制消息发布者
 static Subscriber_t *shoot_feed_sub;         // 发射反馈信息订阅者
 static Shoot_Ctrl_Cmd_s shoot_cmd_send;      // 传递给发射的控制信息
 static Shoot_Upload_Data_s shoot_fetch_data; // 从发射获取的反馈信息
+
+#define RC_DIAL_UP_TRIGGER_THRESHOLD (-100)
+#define RC_DIAL_UP_RESET_THRESHOLD (-50)
+#define RC_DIAL_DOWN_TRIGGER_THRESHOLD (100)
+
+static friction_mode_e rc_friction_toggle_mode = FRICTION_OFF;
+static uint8_t rc_dial_up_latched = 0;
 
 static Robot_Status_e robot_state; // 机器人整体工作状态
 
@@ -132,6 +154,7 @@ static void HostControlSet(void)
         gimbal_cmd_send.pitch = PITCH_MAX_ANGLE;
     if (gimbal_cmd_send.pitch < PITCH_MIN_ANGLE)
         gimbal_cmd_send.pitch = PITCH_MIN_ANGLE;
+    SyncPitchCommandWithFeedback();
 
     if (usb_ctrl_data->chassis.active)
     {
@@ -241,7 +264,7 @@ static void CalcOffsetAngle()
 {
     // 别名angle提高可读性,不然太长了不好看,虽然基本不会动这个函数
     static float angle;
-    angle = gimbal_fetch_data.yaw_motor_single_round_angle * ECD_ANGLE_COEF_DJI; // 从云台获取的当前yaw电机单圈角度(转换为度)
+    angle = gimbal_fetch_data.yaw_motor_single_round_angle; // gimbal回传的已经是角度值,此处不能再次乘转换系数
 #if YAW_ECD_GREATER_THAN_4096                               // 如果大于180度
     if (angle > YAW_ALIGN_ANGLE && angle <= 180.0f + YAW_ALIGN_ANGLE)
         chassis_cmd_send.offset_angle = angle - YAW_ALIGN_ANGLE;
@@ -302,6 +325,7 @@ static void RemoteControlSet()
         gimbal_cmd_send.pitch = PITCH_MAX_ANGLE;
     if (gimbal_cmd_send.pitch < PITCH_MIN_ANGLE)
         gimbal_cmd_send.pitch = PITCH_MIN_ANGLE;
+    SyncPitchCommandWithFeedback();
 
     // 底盘参数,目前没有加入小陀螺(调试似乎暂时没有必要),系数需要调整
     chassis_cmd_send.vx = 10.0f * (float)rc_data[TEMP].rc.rocker_r_; // _水平方向
@@ -313,17 +337,28 @@ static void RemoteControlSet()
     else
         ; // 弹舱舵机控制,待添加servo_motor模块,关闭
 
-    // 摩擦轮控制,拨轮向上打为负,向下为正
+    // 摩擦轮控制,拨轮向上越过阈值触发一次开关,回到阈值内后才能再次触发
     shoot_cmd_send.use_custom_friction_speed = 0;
     shoot_cmd_send.use_custom_loader_speed = 0;
     shoot_cmd_send.friction_speed = 0;
     shoot_cmd_send.loader_speed = 0;
-    if (rc_data[TEMP].rc.dial < -100) // 向上超过100,打开摩擦轮
-        shoot_cmd_send.friction_mode = FRICTION_ON;
-    else
-        shoot_cmd_send.friction_mode = FRICTION_OFF;
-    // 拨弹控制,左上拨盘向下拨动(dial > 100)时触发连发
-    if (rc_data[TEMP].rc.dial > 100)
+
+    if (rc_data[TEMP].rc.dial < RC_DIAL_UP_TRIGGER_THRESHOLD)
+    {
+        if (!rc_dial_up_latched)
+        {
+            rc_friction_toggle_mode = (rc_friction_toggle_mode == FRICTION_ON) ? FRICTION_OFF : FRICTION_ON;
+            rc_dial_up_latched = 1;
+        }
+    }
+    else if (rc_data[TEMP].rc.dial > RC_DIAL_UP_RESET_THRESHOLD)
+    {
+        rc_dial_up_latched = 0;
+    }
+    shoot_cmd_send.friction_mode = rc_friction_toggle_mode;
+
+    // 拨弹控制,左上拨盘向下拨动时触发连发
+    if (rc_data[TEMP].rc.dial > RC_DIAL_DOWN_TRIGGER_THRESHOLD)
         shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
     else
         shoot_cmd_send.load_mode = LOAD_STOP;
@@ -351,6 +386,7 @@ static void MouseKeySet()
         gimbal_cmd_send.pitch = PITCH_MAX_ANGLE;
     if (gimbal_cmd_send.pitch < PITCH_MIN_ANGLE)
         gimbal_cmd_send.pitch = PITCH_MIN_ANGLE;
+    SyncPitchCommandWithFeedback();
 
     switch (rc_data[TEMP].key_count[KEY_PRESS][Key_Z] % 3) // Z键设置弹速
     {
@@ -441,6 +477,8 @@ static void EmergencyHandler()
         chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
         shoot_cmd_send.shoot_mode = SHOOT_OFF;
         shoot_cmd_send.friction_mode = FRICTION_OFF;
+        rc_friction_toggle_mode = FRICTION_OFF;
+        rc_dial_up_latched = 0;
         shoot_cmd_send.load_mode = LOAD_STOP;
         LOGERROR("[CMD] RC offline, emergency stop!");
         return; // 遥控器离线时不做任何恢复判断
@@ -454,6 +492,8 @@ static void EmergencyHandler()
         chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
         shoot_cmd_send.shoot_mode = SHOOT_OFF;
         shoot_cmd_send.friction_mode = FRICTION_OFF;
+        rc_friction_toggle_mode = FRICTION_OFF;
+        rc_dial_up_latched = 0;
         shoot_cmd_send.load_mode = LOAD_STOP;
         LOGERROR("[CMD] emergency stop!");
     }
@@ -523,10 +563,6 @@ void RobotCMDTask()
         (uint8_t)shoot_cmd_send.friction_mode,
         (uint8_t)shoot_cmd_send.load_mode,
         1u);
-
-#if FRICTION_ALWAYS_ON == 1
-    shoot_cmd_send.friction_mode = FRICTION_ON;
-#endif
 
     // 设置视觉发送数据,还需增加加速度和角速度数据
     // VisionSetFlag(chassis_fetch_data.enemy_color,,chassis_fetch_data.bullet_speed)

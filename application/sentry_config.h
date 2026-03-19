@@ -223,6 +223,8 @@ static inline DM2325_Config_s SentryLoaderDM2325Config(void)
  * - 拨弹轮使用达妙2325 (ID: 0x10, Master ID: 0x20)
  */
 #define SENTRY_SHOOT_CAN_HANDLE         hcan1
+#define SENTRY_FRICTION_L_ID            7
+#define SENTRY_FRICTION_R_ID            8
 
 /* ============================== 哨兵机器人机械参数 ============================== */
 #define SENTRY_WHEEL_BASE               350.0f

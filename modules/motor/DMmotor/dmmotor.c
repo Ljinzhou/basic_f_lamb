@@ -137,7 +137,7 @@ void DMMotorTask(void const *argument)
         LIMIT_MIN_MAX(set, DM_T_MIN, DM_T_MAX);
         motor_send_mailbox.position_des = float_to_uint(0, DM_P_MIN, DM_P_MAX, 16);
         motor_send_mailbox.velocity_des = float_to_uint(0, DM_V_MIN, DM_V_MAX, 12);
-        motor_send_mailbox.torque_des = float_to_uint(pid_ref, DM_T_MIN, DM_T_MAX, 12);
+        motor_send_mailbox.torque_des = float_to_uint(set, DM_T_MIN, DM_T_MAX, 12);
         motor_send_mailbox.Kp = 0;
         motor_send_mailbox.Kd = 0;
 

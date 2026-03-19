@@ -145,6 +145,20 @@ def parse_dm_measure(data: bytes) -> Dict[str, float | int]:
     }
 
 
+def force_tuple3(values: Sequence[float]) -> Tuple[float, float, float]:
+    data = [float(value) for value in values[:3]]
+    while len(data) < 3:
+        data.append(0.0)
+    return (data[0], data[1], data[2])
+
+
+def force_tuple4(values: Sequence[float]) -> Tuple[float, float, float, float]:
+    data = [float(value) for value in values[:4]]
+    while len(data) < 4:
+        data.append(0.0)
+    return (data[0], data[1], data[2], data[3])
+
+
 def flatten_snapshot(snapshot: SystemSnapshot) -> Dict[str, object]:
     row: Dict[str, object] = {
         "timestamp": snapshot.timestamp,
@@ -320,6 +334,18 @@ class OpenOCDClient:
                     pass
         return values
 
+    def read_u8(self, address: int) -> int:
+        values = self.read_memory_8(address, 1)
+        return values[0] if values else 0
+
+    def read_u16(self, address: int) -> int:
+        raw = self.read_bytes(address, 2)
+        return struct.unpack("<H", raw)[0] if len(raw) == 2 else 0
+
+    def read_u32(self, address: int) -> int:
+        values = self.read_memory_32(address, 1)
+        return values[0] if values else 0
+
     def read_float(self, address: int) -> float:
         values = self.read_memory_32(address, 1)
         if not values:
@@ -417,10 +443,7 @@ class STLinkDebugBackend:
 
     def read_task_handle(self, symbol_name: str) -> TaskSnapshot:
         address = self.get_symbol_address(symbol_name)
-        handle = 0
-        if address is not None:
-            values = self.openocd.read_memory_32(address, 1)
-            handle = values[0] if values else 0
+        handle = self.openocd.read_u32(address) if address is not None else 0
         return TaskSnapshot(symbol_name, handle != 0, handle)
 
     def read_dji_motor(self, symbol_name: str) -> Optional[MotorSnapshot]:
@@ -500,11 +523,11 @@ class STLinkDebugBackend:
         bmi_addr = self.get_symbol_address("BMI088")
         if ins_addr is None:
             raise RuntimeError("未找到 INS 符号")
-        q = tuple(self.openocd.read_float_array(ins_addr + 0, 4))
-        motion_accel_body = tuple(self.openocd.read_float_array(ins_addr + 16, 3))
-        motion_accel_world = tuple(self.openocd.read_float_array(ins_addr + 28, 3))
-        gyro = tuple(self.openocd.read_float_array(ins_addr + 80, 3))
-        accel = tuple(self.openocd.read_float_array(ins_addr + 92, 3))
+        q = force_tuple4(self.openocd.read_float_array(ins_addr + 0, 4))
+        motion_accel_body = force_tuple3(self.openocd.read_float_array(ins_addr + 16, 3))
+        motion_accel_world = force_tuple3(self.openocd.read_float_array(ins_addr + 28, 3))
+        gyro = force_tuple3(self.openocd.read_float_array(ins_addr + 80, 3))
+        accel = force_tuple3(self.openocd.read_float_array(ins_addr + 92, 3))
         roll = self.openocd.read_float(ins_addr + 104)
         pitch = self.openocd.read_float(ins_addr + 108)
         yaw = self.openocd.read_float(ins_addr + 112)
@@ -513,8 +536,8 @@ class STLinkDebugBackend:
         bmi_accel = (0.0, 0.0, 0.0)
         bmi_temp = 0.0
         if bmi_addr is not None:
-            bmi_gyro = tuple(self.openocd.read_float_array(bmi_addr + 0, 3))
-            bmi_accel = tuple(self.openocd.read_float_array(bmi_addr + 12, 3))
+            bmi_gyro = force_tuple3(self.openocd.read_float_array(bmi_addr + 0, 3))
+            bmi_accel = force_tuple3(self.openocd.read_float_array(bmi_addr + 12, 3))
             bmi_temp = self.openocd.read_float(bmi_addr + 24)
         return IMUSnapshot(roll, pitch, yaw, yaw_total, q, gyro, accel, motion_accel_body, motion_accel_world, bmi_gyro, bmi_accel, bmi_temp)
 
@@ -526,9 +549,8 @@ class STLinkDebugBackend:
         yaw = self.openocd.read_float(feedback_addr + 32)
         pitch = self.openocd.read_float(feedback_addr + 28)
         yaw_total = self.openocd.read_float(feedback_addr + 36)
-        yaw_motor_values = self.openocd.read_memory_32(feedback_addr + 40, 1)
-        yaw_ecd = yaw_motor_values[0] & 0xFFFF if yaw_motor_values else 0
-        mode = self.openocd.read_memory_32(mode_addr + 12, 1)[0] if mode_addr is not None else 0
+        yaw_ecd = self.openocd.read_u16(feedback_addr + 40)
+        mode = self.openocd.read_u8(mode_addr + 12) if mode_addr is not None else 0
         motor_map = {motor.name: motor for motor in motors or []}
         yaw_motor = motor_map.get("yaw_motor")
         pitch_motor = motor_map.get("pitch_motor")
@@ -546,21 +568,25 @@ class STLinkDebugBackend:
         address = self.get_symbol_address("robot_state")
         if address is None:
             return None
-        values = self.openocd.read_memory_32(address, 1)
-        return values[0] if values else None
+        return self.openocd.read_u8(address)
 
     def read_snapshot(self) -> SystemSnapshot:
-        motors = self.read_motors()
-        daemons = [status for status in (self.read_daemon(name) for name in self.DAEMON_SYMBOLS) if status is not None]
-        tasks = [self.read_task_handle(name) for name in self.TASK_SYMBOLS]
-        imu = self.read_imu()
-        gimbal = self.read_gimbal(motors)
-        notes: List[str] = []
-        if not any(task.created for task in tasks):
-            notes.append("未检测到任务句柄，可能尚未启动调度器")
-        if not any(daemon.online for daemon in daemons):
-            notes.append("未检测到在线 daemon，可能目标已停机或符号未初始化")
-        return SystemSnapshot(time.time(), self.read_robot_state(), imu, gimbal, motors, daemons, tasks, notes)
+        halted_here = self.openocd.halt()
+        try:
+            motors = self.read_motors()
+            daemons = [status for status in (self.read_daemon(name) for name in self.DAEMON_SYMBOLS) if status is not None]
+            tasks = [self.read_task_handle(name) for name in self.TASK_SYMBOLS]
+            imu = self.read_imu()
+            gimbal = self.read_gimbal(motors)
+            notes: List[str] = []
+            if not any(task.created for task in tasks):
+                notes.append("未检测到任务句柄，可能尚未启动调度器")
+            if daemons and not any(daemon.online for daemon in daemons):
+                notes.append("所有已发现 daemon 当前均离线")
+            return SystemSnapshot(time.time(), self.read_robot_state(), imu, gimbal, motors, daemons, tasks, notes)
+        finally:
+            if halted_here:
+                self.openocd.resume()
 
     def list_symbols(self, keyword: Optional[str] = None) -> List[SymbolInfo]:
         symbols = list(self.elf_parser.symbols.values())

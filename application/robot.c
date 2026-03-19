@@ -30,8 +30,11 @@ void RobotInit()
     
     BSPInit();
 
-#if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
+#if (defined(ONE_BOARD) || defined(GIMBAL_BOARD)) && !defined(ROBOT_SENTRY)
     GimbalInit();
+#endif
+
+#if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     RobotCMDInit();
     ShootInit();
 #endif
@@ -51,7 +54,9 @@ void RobotTask()
 {
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     RobotCMDTask();
+#if !defined(ROBOT_SENTRY)
     GimbalTask();
+#endif
     ShootTask();
 #endif
 

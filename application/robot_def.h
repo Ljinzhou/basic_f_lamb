@@ -47,13 +47,17 @@
 #define PITCH_HORIZON_ECD 1757      // 云台处于水平位置时编码器值,若对云台有机械改动需要修改
 #define PITCH_MAX_ANGLE 30.0f       // 云台竖直方向最大角度,向上为正(IMU反馈时填写IMU角度)
 #define PITCH_MIN_ANGLE -13.0f      // 云台竖直方向最小角度,向下为负(IMU反馈时填写IMU角度)
+#define PITCH_UPPER_LIMIT_SOFT_ZONE 2.5f // pitch接近上限时开始软限位缓冲的角度范围
+#define PITCH_LIMIT_SOFT_ZONE 2.5f  // pitch接近下限时开始软限位缓冲的角度范围
+#define PITCH_UPPER_LIMIT_RELEASE_ANGLE 0.8f // 触顶后回退保持角,避免持续顶死机械限位
+#define PITCH_LIMIT_RELEASE_ANGLE 0.8f // 触底后回退保持角,避免持续顶死机械限位
+#define PITCH_GRAVITY_COMP_BASE_CURRENT 2200.0f // pitch基础重力补偿电流,正值应抵消低头方向重力矩
+#define PITCH_GRAVITY_COMP_COS_GAIN 800.0f // pitch随角度变化的重力补偿增益
+#define PITCH_MAX_SPEED_REF 1800.0f // pitch角度环输出到速度环的最大期望角速度(deg/s)
+#define PITCH_STALL_ASSIST_CURRENT 3200.0f // pitch大误差起动辅助电流
+#define PITCH_CMD_SYNC_ERROR 3.0f // pitch目标与实际最大允许偏差
 // 发射参数
-/* 摩擦轮始终开启开关
- * 1: 上电连接遥控器后摩擦轮始终旋转
- * 0: 始终不旋转摩擦轮
- */
-#define FRICTION_ALWAYS_ON 0
-#define ONE_BULLET_DELTA_ANGLE 36    // 发射一发弹丸拨盘转动的距离,由机械设计图纸给出
+#define ONE_BULLET_DELTA_ANGLE 86    // 发射一发弹丸拨盘转动的距离,由机械设计图纸给出
 #define REDUCTION_RATIO_LOADER 19.0f // 2006拨盘电机的减速比,英雄需要修改为3508的19.0f
 #define NUM_PER_CIRCLE 8            // 拨盘一圈的装载量
 /* 裁判系统功率控制开关
@@ -64,11 +68,11 @@
 #define CHASSIS_DEFAULT_POWER_LIMIT 50.0f // 裁判系统离线或关闭检测时的默认功率限制(W)
 
 // 机器人底盘修改的参数,单位为mm(毫米)
-#define WHEEL_BASE 350              // 纵向轴距(前进后退方向)
-#define TRACK_WIDTH 300             // 横向轮距(左右平移方向)
+#define WHEEL_BASE 524              // 纵向轴距(前进后退方向)
+#define TRACK_WIDTH 524             // 横向轮距(左右平移方向)
 #define CENTER_GIMBAL_OFFSET_X 0    // 云台旋转中心距底盘几何中心的距离,前后方向,云台位于正中心时默认设为0
 #define CENTER_GIMBAL_OFFSET_Y 0    // 云台旋转中心距底盘几何中心的距离,左右方向,云台位于正中心时默认设为0
-#define RADIUS_WHEEL 60             // 轮子半径
+#define RADIUS_WHEEL 76             // 轮子半径
 #define REDUCTION_RATIO_WHEEL 19.0f // 电机减速比,因为编码器量测的是转子的速度而不是输出轴的速度故需进行转换
 
 #define GYRO2GIMBAL_DIR_YAW -1  // 陀螺仪数据相较于云台的yaw的方向,1为相同,-1为相反
